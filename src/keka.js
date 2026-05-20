@@ -1,129 +1,59 @@
-import path from 'node:path';
-import fs from 'node:fs';
-import os from 'node:os';
-import { chromium } from 'playwright';
+const KEKA_BASE = `https://${process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com'}`;
+const TOKEN_ENDPOINT = 'https://app.keka.com/connect/token';
+const CLIENT_ID = '987cc971-fc22-4454-99f9-16c078fa7ff6';
+const ACTION_TIMEOUT_MS = 30_000;
 
-const PROFILE_DIR = path.join(os.homedir(), '.workctl', 'chromium_profile');
-const ACTION_TIMEOUT_MS = 5 * 60 * 1000;
-
-function kekaBaseUrl() {
-  const sub = process.env.KEKA_SUBDOMAIN || 'app.keka.com';
-  return `https://${sub}`;
-}
-
-function ensureProfileDir() {
-  fs.mkdirSync(PROFILE_DIR, { recursive: true });
-}
-
-function profileHasSession() {
-  // Playwright Chromium puts cookies under <profile>/Default/Cookies (or Network/Cookies).
-  return (
-    fs.existsSync(path.join(PROFILE_DIR, 'Default', 'Cookies')) ||
-    fs.existsSync(path.join(PROFILE_DIR, 'Default', 'Network', 'Cookies'))
-  );
-}
-
-async function openContext({ headless }) {
-  ensureProfileDir();
-  return chromium.launchPersistentContext(PROFILE_DIR, {
-    headless,
-    args: ['--disable-blink-features=AutomationControlled'],
-    ignoreDefaultArgs: ['--enable-automation'],
+async function refreshAccessToken(refreshToken) {
+  const res = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: CLIENT_ID,
+      refresh_token: refreshToken,
+    }),
   });
-}
-
-async function isLoggedIn(page) {
-  try {
-    const token = await page.evaluate(() => localStorage.getItem('id_token'));
-    return Boolean(token);
-  } catch {
-    return false;
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Token refresh failed (${res.status}): ${body}`);
   }
+  const { access_token } = await res.json();
+  if (!access_token) throw new Error('Token refresh response missing access_token');
+  return access_token;
 }
 
-async function clickIfPresent(page, selector, { timeout = 5000 } = {}) {
-  try {
-    await page.click(selector, { timeout });
-    return true;
-  } catch {
-    return false;
-  }
-}
+async function clockAction(action) {
+  const refreshToken = process.env.KEKA_REFRESH_TOKEN;
+  if (!refreshToken) throw new Error('KEKA_REFRESH_TOKEN env var is required');
 
-async function withTimeout(promise, ms, onTimeout) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      onTimeout?.();
-      reject(new Error(`action timed out after ${ms}ms`));
-    }, ms);
+  const accessToken = await refreshAccessToken(refreshToken);
+
+  // originalPunchStatus 0 = clock-in, 1 = clock-out
+  const originalPunchStatus = action === 'login' ? 0 : 1;
+
+  const res = await fetch(`${KEKA_BASE}/k/dashboard/api/mytime/attendance/webclockin`, {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json, text/plain, */*',
+      'authorization': `Bearer ${accessToken}`,
+      'content-type': 'application/json; charset=UTF-8',
+      'origin': KEKA_BASE,
+      'referer': `${KEKA_BASE}/`,
+      'x-requested-with': 'XMLHttpRequest',
+    },
+    body: JSON.stringify({
+      timestamp: new Date().toISOString(),
+      attendanceLogSource: 1,
+      locationAddress: null,
+      manualClockinType: 1,
+      note: '',
+      originalPunchStatus,
+    }),
   });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
-async function performLogin(logger) {
-  if (!profileHasSession()) {
-    throw new Error(
-      'No saved Chromium profile session. Run a manual headed login first ' +
-        '(set HEADED=1 and call /trigger/login, or use the workctl Python CLI) ' +
-        'to complete Google OAuth.',
-    );
-  }
-
-  const headless = process.env.HEADED !== '1';
-  const context = await openContext({ headless });
-  try {
-    const page = await context.newPage();
-    await page.goto(kekaBaseUrl(), { waitUntil: 'networkidle', timeout: 30_000 });
-
-    if (!(await isLoggedIn(page))) {
-      throw new Error(
-        'Keka session expired — Google OAuth required. Run with HEADED=1 to refresh.',
-      );
-    }
-
-    const clicked = await clickIfPresent(page, "button:has-text('Web Clock-In')");
-    if (!clicked) {
-      logger.warn('Web Clock-In button not found — likely already clocked in');
-      return { punched: false, reason: 'no-clock-in-button' };
-    }
-    await clickIfPresent(page, "button.btn-primary.btn-sm:has-text('Confirm')");
-    await page.waitForLoadState('networkidle').catch(() => {});
-    return { punched: true };
-  } finally {
-    await context.close();
-  }
-}
-
-async function performLogout(logger) {
-  if (!profileHasSession()) {
-    throw new Error('No saved Chromium profile session.');
-  }
-
-  const headless = process.env.HEADED !== '1';
-  const context = await openContext({ headless });
-  try {
-    const page = await context.newPage();
-    await page.goto(kekaBaseUrl(), { waitUntil: 'networkidle', timeout: 30_000 });
-
-    // Mirror the Python flow: two Clock-out buttons then Confirm.
-    const c1 = await clickIfPresent(page, "button.btn-danger.btn-x-sm:has-text('Clock-out')");
-    const c2 = await clickIfPresent(page, "button.btn-danger.btn-x-sm.mr-10:has-text('Clock-out')");
-    const ok = await clickIfPresent(page, "button.btn-primary.btn-sm:has-text('Confirm')");
-
-    if (!c1 && !c2 && !ok) {
-      logger.warn('Clock-out buttons not found — likely already clocked out');
-      return { punched: false, reason: 'no-clock-out-button' };
-    }
-    await page.waitForLoadState('networkidle').catch(() => {});
-    return { punched: true };
-  } finally {
-    await context.close();
-  }
+  const body = await res.text();
+  if (!res.ok) throw new Error(`Clock ${action} failed (${res.status}): ${body}`);
+  return { punched: true, response: body };
 }
 
 export async function runAction(action, { logger } = {}) {
@@ -132,13 +62,14 @@ export async function runAction(action, { logger } = {}) {
   }
 
   const startedAt = Date.now();
-  let timedOut = false;
 
   try {
-    const work = action === 'login' ? performLogin(logger) : performLogout(logger);
-    const result = await withTimeout(work, ACTION_TIMEOUT_MS, () => {
-      timedOut = true;
-    });
+    const result = await Promise.race([
+      clockAction(action),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`action timed out after ${ACTION_TIMEOUT_MS}ms`)), ACTION_TIMEOUT_MS),
+      ),
+    ]);
     return {
       exitCode: 0,
       stdout: JSON.stringify(result),
@@ -147,6 +78,7 @@ export async function runAction(action, { logger } = {}) {
       timedOut: false,
     };
   } catch (err) {
+    const timedOut = err.message.includes('timed out');
     return {
       exitCode: 1,
       stdout: '',
