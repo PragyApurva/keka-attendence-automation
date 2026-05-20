@@ -27,12 +27,11 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Restore Chromium profile
-        run: |
-          mkdir -p "$HOME/.workctl"
-          echo "$CHROMIUM_PROFILE_B64" | base64 -d | tar -xz -C "$HOME/.workctl"
+      - name: Inject session tokens
+        run: node scripts/inject-session.js
         env:
-          CHROMIUM_PROFILE_B64: ${{ secrets.CHROMIUM_PROFILE_B64 }}
+          KEKA_SUBDOMAIN: ${{ secrets.KEKA_SUBDOMAIN }}
+          KEKA_SESSION: ${{ secrets.KEKA_SESSION }}
 
       - name: Punch out
         run: node scripts/run-action.js logout

@@ -9,12 +9,15 @@
     "dev": "node --watch src/server.js",
     "setup-session": "node scripts/setup-session.js",
     "run-action": "node scripts/run-action.js",
+    "export-session": "node scripts/export-session.js",
+    "inject-session": "node scripts/inject-session.js",
     "test": "node --test test/"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "classic-level": "^3.0.0",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
     "pino": "^9.5.0",
