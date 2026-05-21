@@ -1,24 +1,45 @@
+import https from 'node:https';
+import { URLSearchParams } from 'node:url';
+
 const KEKA_BASE = `https://${process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com'}`;
 const TOKEN_ENDPOINT = 'https://app.keka.com/connect/token';
 const CLIENT_ID = '987cc971-fc22-4454-99f9-16c078fa7ff6';
 const ACTION_TIMEOUT_MS = 30_000;
 
+function httpsPost(url, body, headers) {
+  return new Promise((resolve, reject) => {
+    const { hostname, pathname, search } = new URL(url);
+    const path = pathname + (search ?? '');
+    const bodyBuf = Buffer.from(body);
+    const req = https.request(
+      { hostname, path, method: 'POST', headers: { ...headers, 'Content-Length': bodyBuf.length } },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+      },
+    );
+    req.on('error', reject);
+    req.write(bodyBuf);
+    req.end();
+  });
+}
+
 // Returns { accessToken, newRefreshToken } — newRefreshToken may differ if server rotates tokens.
 async function refreshAccessToken(refreshToken) {
-  const res = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: CLIENT_ID,
-      refresh_token: refreshToken,
-    }),
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: CLIENT_ID,
+    refresh_token: refreshToken,
+  }).toString();
+
+  const { status, body: resBody } = await httpsPost(TOKEN_ENDPOINT, body, {
+    'Content-Type': 'application/x-www-form-urlencoded',
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Token refresh failed (${res.status}): ${body}`);
-  }
-  const data = await res.json();
+
+  if (status !== 200) throw new Error(`Token refresh failed (${status}): ${resBody}`);
+
+  const data = JSON.parse(resBody);
   if (!data.access_token) throw new Error('Token refresh response missing access_token');
   return { accessToken: data.access_token, newRefreshToken: data.refresh_token ?? refreshToken };
 }
@@ -28,15 +49,23 @@ async function clockAction(action) {
   if (!refreshToken) throw new Error('KEKA_REFRESH_TOKEN env var is required');
 
   const { accessToken, newRefreshToken } = await refreshAccessToken(refreshToken);
-  // Write back so the caller can persist a rotated token
   if (newRefreshToken !== refreshToken) process.env.KEKA_REFRESH_TOKEN = newRefreshToken;
 
-  // originalPunchStatus 0 = clock-in, 1 = clock-out
-  const originalPunchStatus = action === 'login' ? 0 : 1;
+  const { hostname, pathname } = new URL(KEKA_BASE);
+  const reqBody = JSON.stringify({
+    timestamp: new Date().toISOString(),
+    attendanceLogSource: 1,
+    locationAddress: null,
+    manualClockinType: 1,
+    note: '',
+    // 0 = clock-in, 1 = clock-out
+    originalPunchStatus: action === 'login' ? 0 : 1,
+  });
 
-  const res = await fetch(`${KEKA_BASE}/k/dashboard/api/mytime/attendance/webclockin`, {
-    method: 'POST',
-    headers: {
+  const { status, body } = await httpsPost(
+    `${KEKA_BASE}/k/dashboard/api/mytime/attendance/webclockin`,
+    reqBody,
+    {
       'accept': 'application/json, text/plain, */*',
       'authorization': `Bearer ${accessToken}`,
       'content-type': 'application/json; charset=UTF-8',
@@ -44,18 +73,9 @@ async function clockAction(action) {
       'referer': `${KEKA_BASE}/`,
       'x-requested-with': 'XMLHttpRequest',
     },
-    body: JSON.stringify({
-      timestamp: new Date().toISOString(),
-      attendanceLogSource: 1,
-      locationAddress: null,
-      manualClockinType: 1,
-      note: '',
-      originalPunchStatus,
-    }),
-  });
+  );
 
-  const body = await res.text();
-  if (!res.ok) throw new Error(`Clock ${action} failed (${res.status}): ${body}`);
+  if (status < 200 || status >= 300) throw new Error(`Clock ${action} failed (${status}): ${body}`);
   return { punched: true, response: body, refreshToken: process.env.KEKA_REFRESH_TOKEN };
 }
 
@@ -70,7 +90,10 @@ export async function runAction(action, { logger } = {}) {
     const result = await Promise.race([
       clockAction(action),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`action timed out after ${ACTION_TIMEOUT_MS}ms`)), ACTION_TIMEOUT_MS),
+        setTimeout(
+          () => reject(new Error(`action timed out after ${ACTION_TIMEOUT_MS}ms`)),
+          ACTION_TIMEOUT_MS,
+        ),
       ),
     ]);
     return {
