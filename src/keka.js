@@ -1,6 +1,7 @@
 import https from 'node:https';
 
-const KEKA_BASE = `https://${process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com'}`;
+const _subdomain = (process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const KEKA_BASE = `https://${_subdomain}`;
 const ACTION_TIMEOUT_MS = 30_000;
 
 function httpsPost(url, body, headers) {
