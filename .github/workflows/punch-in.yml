@@ -48,7 +48,7 @@ jobs:
           FORCE: ${{ inputs.force == true && '1' || '0' }}
 
       - name: Rotate refresh token secret
-        if: steps.refresh.outcome == 'success'
+        if: always() && steps.refresh.outcome == 'success'
         run: gh secret set KEKA_REFRESH_TOKEN --body "$NEW_REFRESH"
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
