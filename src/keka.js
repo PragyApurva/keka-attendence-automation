@@ -3,6 +3,7 @@ const TOKEN_ENDPOINT = 'https://app.keka.com/connect/token';
 const CLIENT_ID = '987cc971-fc22-4454-99f9-16c078fa7ff6';
 const ACTION_TIMEOUT_MS = 30_000;
 
+// Returns { accessToken, newRefreshToken } — newRefreshToken may differ if server rotates tokens.
 async function refreshAccessToken(refreshToken) {
   const res = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
@@ -17,16 +18,18 @@ async function refreshAccessToken(refreshToken) {
     const body = await res.text();
     throw new Error(`Token refresh failed (${res.status}): ${body}`);
   }
-  const { access_token } = await res.json();
-  if (!access_token) throw new Error('Token refresh response missing access_token');
-  return access_token;
+  const data = await res.json();
+  if (!data.access_token) throw new Error('Token refresh response missing access_token');
+  return { accessToken: data.access_token, newRefreshToken: data.refresh_token ?? refreshToken };
 }
 
 async function clockAction(action) {
   const refreshToken = process.env.KEKA_REFRESH_TOKEN;
   if (!refreshToken) throw new Error('KEKA_REFRESH_TOKEN env var is required');
 
-  const accessToken = await refreshAccessToken(refreshToken);
+  const { accessToken, newRefreshToken } = await refreshAccessToken(refreshToken);
+  // Write back so the caller can persist a rotated token
+  if (newRefreshToken !== refreshToken) process.env.KEKA_REFRESH_TOKEN = newRefreshToken;
 
   // originalPunchStatus 0 = clock-in, 1 = clock-out
   const originalPunchStatus = action === 'login' ? 0 : 1;
@@ -53,7 +56,7 @@ async function clockAction(action) {
 
   const body = await res.text();
   if (!res.ok) throw new Error(`Clock ${action} failed (${res.status}): ${body}`);
-  return { punched: true, response: body };
+  return { punched: true, response: body, refreshToken: process.env.KEKA_REFRESH_TOKEN };
 }
 
 export async function runAction(action, { logger } = {}) {

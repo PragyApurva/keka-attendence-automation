@@ -28,5 +28,12 @@ jobs:
         run: node scripts/run-action.js logout
         env:
           KEKA_SUBDOMAIN: ${{ secrets.KEKA_SUBDOMAIN }}
-          KEKA_REFRESH_TOKEN: ${{ secrets.KEKA_REFRESH_TOKEN }}
           FORCE: ${{ inputs.force == true && '1' || '0' }}
+
+      - name: Commit rotated token
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .keka-refresh-token
+          git diff --cached --quiet || git commit -m "chore: rotate keka refresh token"
+          git push
