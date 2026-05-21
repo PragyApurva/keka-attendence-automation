@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const LOG_DIR = path.join(os.homedir(), '.workctl-scheduler');
+const LOG_DIR =
+  process.env.RUN_LOG_DIR || path.join(os.homedir(), '.workctl-scheduler');
 const LOG_FILE = path.join(LOG_DIR, 'runs.log');
 
 function ensureDir() {

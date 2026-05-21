@@ -8,7 +8,8 @@ import os from 'node:os';
 import readline from 'node:readline';
 import { chromium } from 'playwright';
 
-const PROFILE_DIR = path.join(os.homedir(), '.workctl', 'chromium_profile');
+const PROFILE_DIR =
+  process.env.PROFILE_DIR || path.join(os.homedir(), '.workctl', 'chromium_profile');
 const KEKA_URL = `https://${process.env.KEKA_SUBDOMAIN || 'app.keka.com'}`;
 
 function prompt(q) {

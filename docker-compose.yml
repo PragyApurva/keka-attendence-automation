@@ -1,0 +1,24 @@
+services:
+  keka-scheduler:
+    build: .
+    image: keka-scheduler:latest
+    container_name: keka-scheduler
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3030:3030"   # bind to loopback; expose via SSH tunnel or reverse proxy
+    environment:
+      TZ: Asia/Kolkata
+      TZ_NAME: Asia/Kolkata
+      KEKA_SUBDOMAIN: app.keka.com
+      PROFILE_DIR: /data/profile
+      RUN_LOG_DIR: /data/runs
+    volumes:
+      - keka_data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3030/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+
+volumes:
+  keka_data:

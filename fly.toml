@@ -1,0 +1,34 @@
+# Fly.io config. Edit `app` to your chosen name, then:
+#   fly launch --no-deploy --copy-config   (or fly apps create <name>)
+#   fly volumes create keka_data --size 1 --region <your-region>
+#   fly deploy
+
+app = "keka-scheduler"
+primary_region = "bom"      # Mumbai — closest to IST users
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3030"
+  TZ = "Asia/Kolkata"
+  TZ_NAME = "Asia/Kolkata"
+  KEKA_SUBDOMAIN = "app.keka.com"
+  PROFILE_DIR = "/data/profile"
+  RUN_LOG_DIR = "/data/runs"
+
+[[mounts]]
+  source = "keka_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3030
+  force_https = true
+  auto_stop_machines = false        # must stay running for cron to fire
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024                  # Chromium needs headroom
