@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Reads the refresh_token from Chromium's localStorage LevelDB and prints it.
-// Store the output as the KEKA_REFRESH_TOKEN GitHub secret.
+// Reads the access_token from Chromium's localStorage LevelDB and prints it.
+// Store the output as .keka-access-token (committed to the repo).
 //
 // Usage:
-//   node scripts/export-session.js
+//   node scripts/export-session.js > .keka-access-token
 
 import { ClassicLevel } from 'classic-level';
 import path from 'node:path';
@@ -14,14 +14,14 @@ const PROFILE_DIR =
 const DB_PATH = path.join(PROFILE_DIR, 'Default', 'Local Storage', 'leveldb');
 const ORIGIN = `https://${process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com'}`;
 
-const KEY = Buffer.from(`_${ORIGIN}\x00\x01refresh_token`, 'utf8');
+const KEY = Buffer.from(`_${ORIGIN}\x00\x01access_token`, 'utf8');
 
 const db = new ClassicLevel(DB_PATH, { keyEncoding: 'buffer', valueEncoding: 'buffer' });
 const value = await db.get(KEY).catch(() => null);
 await db.close();
 
 if (!value) {
-  console.error(`refresh_token not found for origin: ${ORIGIN}`);
+  console.error(`access_token not found for origin: ${ORIGIN}`);
   console.error('Run npm run setup-session first.');
   process.exit(1);
 }

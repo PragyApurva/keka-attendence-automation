@@ -1,22 +1,25 @@
 import https from 'node:https';
-import { URLSearchParams } from 'node:url';
 
 const KEKA_BASE = `https://${process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com'}`;
-const TOKEN_ENDPOINT = 'https://app.keka.com/connect/token';
-const CLIENT_ID = '987cc971-fc22-4454-99f9-16c078fa7ff6';
 const ACTION_TIMEOUT_MS = 30_000;
 
 function httpsPost(url, body, headers) {
   return new Promise((resolve, reject) => {
     const { hostname, pathname, search } = new URL(url);
-    const path = pathname + (search ?? '');
     const bodyBuf = Buffer.from(body);
     const req = https.request(
-      { hostname, path, method: 'POST', headers: { ...headers, 'Content-Length': bodyBuf.length } },
+      {
+        hostname,
+        path: pathname + (search ?? ''),
+        method: 'POST',
+        headers: { ...headers, 'Content-Length': bodyBuf.length },
+      },
       (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
-        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+        res.on('end', () =>
+          resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }),
+        );
       },
     );
     req.on('error', reject);
@@ -25,33 +28,13 @@ function httpsPost(url, body, headers) {
   });
 }
 
-// Returns { accessToken, newRefreshToken } — newRefreshToken may differ if server rotates tokens.
-async function refreshAccessToken(refreshToken) {
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    client_id: CLIENT_ID,
-    refresh_token: refreshToken,
-  }).toString();
-
-  const { status, body: resBody } = await httpsPost(TOKEN_ENDPOINT, body, {
-    'Content-Type': 'application/x-www-form-urlencoded',
-  });
-
-  if (status !== 200) throw new Error(`Token refresh failed (${status}): ${resBody}`);
-
-  const data = JSON.parse(resBody);
-  if (!data.access_token) throw new Error('Token refresh response missing access_token');
-  return { accessToken: data.access_token, newRefreshToken: data.refresh_token ?? refreshToken };
-}
-
 async function clockAction(action) {
-  const refreshToken = process.env.KEKA_REFRESH_TOKEN;
-  if (!refreshToken) throw new Error('KEKA_REFRESH_TOKEN env var is required');
+  const rawToken = process.env.KEKA_ACCESS_TOKEN;
+  if (!rawToken) throw new Error('KEKA_ACCESS_TOKEN env var is required');
 
-  const { accessToken, newRefreshToken } = await refreshAccessToken(refreshToken);
-  if (newRefreshToken !== refreshToken) process.env.KEKA_REFRESH_TOKEN = newRefreshToken;
+  // Accept both "Bearer <token>" and raw token
+  const accessToken = rawToken.startsWith('Bearer ') ? rawToken.slice(7) : rawToken;
 
-  const { hostname, pathname } = new URL(KEKA_BASE);
   const reqBody = JSON.stringify({
     timestamp: new Date().toISOString(),
     attendanceLogSource: 1,
@@ -76,7 +59,7 @@ async function clockAction(action) {
   );
 
   if (status < 200 || status >= 300) throw new Error(`Clock ${action} failed (${status}): ${body}`);
-  return { punched: true, response: body, refreshToken: process.env.KEKA_REFRESH_TOKEN };
+  return { punched: true, response: body };
 }
 
 export async function runAction(action, { logger } = {}) {
