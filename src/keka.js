@@ -98,6 +98,38 @@ export async function runAction(action, { logger } = {}) {
   }
 }
 
+const KEKA_CLIENT_ID = '987cc971-fc22-4454-99f9-16c078fa7ff6';
+
+export async function refreshAccessToken(refreshToken) {
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: KEKA_CLIENT_ID,
+  }).toString();
+
+  const subdomain = process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com';
+  const { status, body: respBody } = await httpsPost(
+    'https://app.keka.com/connect/token',
+    body,
+    {
+      'content-type': 'application/x-www-form-urlencoded',
+      'origin': `https://${subdomain}`,
+      'referer': `https://${subdomain}/`,
+    },
+  );
+
+  if (status < 200 || status >= 300) {
+    let parsed = {};
+    try { parsed = JSON.parse(respBody); } catch {}
+    const err = new Error(`Token refresh failed (${status}): ${respBody}`);
+    err.code = parsed.error ?? 'refresh_failed';
+    throw err;
+  }
+
+  const data = JSON.parse(respBody);
+  return { accessToken: data.access_token, refreshToken: data.refresh_token };
+}
+
 export function tail(str, n = 500) {
   if (!str) return '';
   return str.length > n ? str.slice(-n) : str;

@@ -24,8 +24,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Refresh Keka token
+        id: refresh
+        run: |
+          TOKENS=$(node scripts/refresh-token.js)
+          EXIT=$?
+          if [ $EXIT -ne 0 ]; then exit $EXIT; fi
+          ACCESS=$(echo "$TOKENS" | jq -r .access_token)
+          REFRESH=$(echo "$TOKENS" | jq -r .refresh_token)
+          echo "::add-mask::$ACCESS"
+          echo "::add-mask::$REFRESH"
+          echo "access_token=$ACCESS" >> "$GITHUB_OUTPUT"
+          echo "refresh_token=$REFRESH" >> "$GITHUB_OUTPUT"
+        env:
+          KEKA_REFRESH_TOKEN: ${{ secrets.KEKA_REFRESH_TOKEN }}
+          KEKA_SUBDOMAIN: ${{ secrets.KEKA_SUBDOMAIN }}
+
       - name: Punch out
         run: node scripts/run-action.js logout
         env:
+          KEKA_ACCESS_TOKEN: ${{ steps.refresh.outputs.access_token }}
           KEKA_SUBDOMAIN: ${{ secrets.KEKA_SUBDOMAIN }}
           FORCE: ${{ inputs.force == true && '1' || '0' }}
+
+      - name: Rotate refresh token secret
+        if: steps.refresh.outcome == 'success'
+        run: gh secret set KEKA_REFRESH_TOKEN --body "$NEW_REFRESH"
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          NEW_REFRESH: ${{ steps.refresh.outputs.refresh_token }}
