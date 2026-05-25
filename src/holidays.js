@@ -2,19 +2,18 @@
 // Format: YYYY-MM-DD => name
 export const HOLIDAYS = {
   // 2026
+  '2026-01-01': 'New Year Day',
+  '2026-01-14': 'Sankranti / Pongal',
   '2026-01-26': 'Republic Day',
-  '2026-03-04': 'Holi',
-  '2026-03-21': 'Eid al-Fitr',
+  '2026-03-03': 'Holi',
+  '2026-03-19': 'Ugadi',
+  '2026-03-21': 'Eidul Fitr (Ramzan)',
   '2026-04-03': 'Good Friday',
-  '2026-05-01': 'May Day',
-  '2026-05-27': 'Eid al-Adha',
   '2026-08-15': 'Independence Day',
-  '2026-08-26': 'Janmashtami',
-  '2026-10-02': 'Gandhi Jayanti',
-  '2026-10-20': 'Dussehra',
-  '2026-11-08': 'Diwali',
-  '2026-11-09': 'Diwali (Govardhan)',
-  '2026-11-24': 'Guru Nanak Jayanti',
+  '2026-09-14': 'Vinayaka Chavithi',
+  '2026-10-02': 'Mahatma Gandhi Jayanti',
+  '2026-10-20': 'Vijaya Dashami / Dussehra',
+  '2026-11-08': 'Deepavali',
   '2026-12-25': 'Christmas',
 
   // 2027 (placeholders — verify against gazette before relying on these)

@@ -132,3 +132,4 @@ Re-run steps 1 + 4 whenever the Google session expires.
 
 - Process logs: stdout (pino JSON; pipe through `pino-pretty` for readable form)
 - Run history: `~/.workctl-scheduler/runs.log` (append-only JSONL)
+- insert
