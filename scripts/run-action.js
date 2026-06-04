@@ -3,9 +3,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import pino from 'pino';
-import { runAction, tail } from '../src/keka.js';
-import { appendRun } from '../src/state.js';
-import { holidayName } from '../src/holidays.js';
+import { fireAction } from '../src/scheduler.js';
 
 const TOKEN_FILE = path.resolve(process.env.TOKEN_FILE || '.keka-access-token');
 
@@ -28,25 +26,9 @@ if (!process.env.KEKA_ACCESS_TOKEN) {
 const logger = pino();
 const force = process.env.FORCE === '1';
 
-const holiday = holidayName();
-if (holiday && !force) {
-  console.log(`Skipping — today is ${holiday}`);
-  appendRun({ action, status: 'skipped', reason: `holiday:${holiday}` });
-  process.exit(0);
-}
+const entry = await fireAction(action, logger, { force });
+const exitCode = entry.status === 'failed' || entry.status === 'timeout' ? 1 : 0;
 
-const result = await runAction(action, { logger });
-const status = result.timedOut ? 'timeout' : result.exitCode === 0 ? 'ok' : 'failed';
-
-appendRun({
-  action,
-  status,
-  exitCode: result.exitCode,
-  durationMs: result.durationMs,
-  stdoutTail: tail(result.stdout),
-  stderrTail: tail(result.stderr),
-});
-
-if (result.stdout) console.log(result.stdout);
-if (result.stderr) console.error(result.stderr);
-process.exit(result.exitCode);
+if (entry.stdoutTail) console.log(entry.stdoutTail);
+if (entry.stderrTail) console.error(entry.stderrTail);
+process.exit(exitCode);

@@ -45,7 +45,7 @@ function hasSuccessfulRunToday(action, date) {
   );
 }
 
-async function fire(action, logger, { force = false } = {}) {
+export async function fireAction(action, logger, { force = false } = {}) {
   const holiday = holidayName();
   const parts = getIstDateParts();
   const alreadyPunched = hasSuccessfulRunToday(action, parts.date);
@@ -114,7 +114,7 @@ export function startScheduler(logger) {
   return {
     loginJob,
     logoutJob,
-    fire: (action, opts) => fire(action, logger, opts),
+    fire: (action, opts) => fireAction(action, logger, opts),
     schedules: { login: LOGIN_CRON, logout: LOGOUT_CRON, tz: TZ },
   };
 }
