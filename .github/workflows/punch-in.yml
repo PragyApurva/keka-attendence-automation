@@ -2,7 +2,7 @@ name: Keka Punch-In
 
 on:
   schedule:
-    - cron: '0 4 * * 1-5'   # 09:30 IST (UTC+5:30) = 04:00 UTC, Mon–Fri
+    - cron: '*/15 * * * 1-5'  # every 15 minutes Mon–Fri
   workflow_dispatch:
     inputs:
       force:

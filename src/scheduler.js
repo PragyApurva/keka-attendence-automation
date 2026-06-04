@@ -1,15 +1,55 @@
 import cron from 'node-cron';
 import { runAction, tail } from './keka.js';
 import { holidayName } from './holidays.js';
-import { appendRun } from './state.js';
+import { appendRun, recentRuns } from './state.js';
 
 const TZ = process.env.TZ_NAME || 'Asia/Kolkata';
 
-const LOGIN_CRON = '30 9 * * 1-5';   // 09:30 Mon-Fri
-const LOGOUT_CRON = '0 20 * * 1-5';  // 20:00 Mon-Fri
+const LOGIN_CRON = '*/15 * * * 1-5';
+const LOGOUT_CRON = '*/15 * * * 1-5';
+
+export function getIstDateParts(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(now);
+
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+  };
+}
+
+export function isInPunchWindow(action, parts) {
+  if (action === 'login') {
+    return parts.hour === 9 && parts.minute >= 25 && parts.minute <= 35;
+  }
+
+  if (action === 'logout') {
+    return parts.hour === 20 && parts.minute >= 25 && parts.minute <= 35;
+  }
+
+  return false;
+}
+
+function hasSuccessfulRunToday(action, date) {
+  return recentRuns(200).some(
+    (run) => run.action === action && run.status === 'ok' && run.ts?.startsWith(date),
+  );
+}
 
 async function fire(action, logger, { force = false } = {}) {
   const holiday = holidayName();
+  const parts = getIstDateParts();
+  const alreadyPunched = hasSuccessfulRunToday(action, parts.date);
+
   if (holiday && !force) {
     const entry = { action, status: 'skipped', reason: `holiday:${holiday}` };
     appendRun(entry);
@@ -17,7 +57,21 @@ async function fire(action, logger, { force = false } = {}) {
     return entry;
   }
 
-  logger.info({ action }, 'firing keka action');
+  if (!force && !isInPunchWindow(action, parts)) {
+    const entry = { action, status: 'skipped', reason: 'out-of-window', time: parts };
+    appendRun(entry);
+    logger.info(entry, 'skipped because current IST time is outside punch window');
+    return entry;
+  }
+
+  if (!force && alreadyPunched) {
+    const entry = { action, status: 'skipped', reason: 'already_punched', date: parts.date };
+    appendRun(entry);
+    logger.info(entry, 'skipped because action already succeeded today');
+    return entry;
+  }
+
+  logger.info({ action, time: parts }, 'firing keka action');
   const result = await runAction(action, { logger });
   const status = result.timedOut
     ? 'timeout'
@@ -34,7 +88,8 @@ async function fire(action, logger, { force = false } = {}) {
     stderrTail: tail(result.stderr),
   };
   appendRun(entry);
-  logger[status === 'ok' ? 'info' : 'error'](entry, 'action finished');
+  const level = status === 'ok' || status === 'skipped' ? 'info' : 'error';
+  logger[level](entry, 'action finished');
   return entry;
 }
 
