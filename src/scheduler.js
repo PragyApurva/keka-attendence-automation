@@ -28,17 +28,18 @@ export function getIstDateParts(now = new Date()) {
   };
 }
 
-// Login: 9:30–10:59 IST, only if not already clocked in
-// Logout: 20:30+ IST, only if currently clocked in (Redis status === 'in')
+// Login: 9:30 AM–1:00 PM IST, only if not already clocked in
+// Logout: 7:45 PM–10:30 PM IST, only if currently clocked in (Redis status === 'in')
 export function shouldFire(action, parts, clockStatus) {
   if (action === 'login') {
     const afterOpen = parts.hour > 9 || (parts.hour === 9 && parts.minute >= 30);
-    const beforeCutoff = parts.hour < 11;
+    const beforeCutoff = parts.hour < 13;
     return afterOpen && beforeCutoff && clockStatus !== 'in';
   }
   if (action === 'logout') {
-    const afterClose = parts.hour > 20 || (parts.hour === 20 && parts.minute >= 30);
-    return afterClose && clockStatus === 'in';
+    const afterOpen = parts.hour > 19 || (parts.hour === 19 && parts.minute >= 45);
+    const beforeCutoff = parts.hour < 22 || (parts.hour === 22 && parts.minute <= 30);
+    return afterOpen && beforeCutoff && clockStatus === 'in';
   }
   return false;
 }
