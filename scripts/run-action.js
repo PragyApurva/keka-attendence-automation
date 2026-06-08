@@ -29,6 +29,9 @@ const force = process.env.FORCE === '1';
 const entry = await fireAction(action, logger, { force });
 const exitCode = entry.status === 'failed' || entry.status === 'timeout' ? 1 : 0;
 
-if (entry.stdoutTail) console.log(entry.stdoutTail);
-if (entry.stderrTail) console.error(entry.stderrTail);
+if (exitCode !== 0) {
+  logger.error({ action, status: entry.status, durationMs: entry.durationMs }, 'action failed');
+} else {
+  logger.info({ action, status: entry.status, durationMs: entry.durationMs }, 'action completed');
+}
 process.exit(exitCode);

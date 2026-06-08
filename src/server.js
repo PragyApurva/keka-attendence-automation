@@ -3,7 +3,7 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import pino from 'pino';
 import { startScheduler } from './scheduler.js';
-import { recentRuns, LOG_PATH } from './state.js';
+import { recentRuns } from './state.js';
 import { holidayName } from './holidays.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
@@ -28,7 +28,6 @@ const server = http.createServer(async (req, res) => {
         uptimeSec: Math.round((Date.now() - startedAt) / 1000),
         schedules: scheduler.schedules,
         todayHoliday: holidayName(),
-        logPath: LOG_PATH,
       });
     }
 
@@ -52,7 +51,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 404, { error: 'not found', route });
   } catch (err) {
     logger.error({ err, route }, 'request error');
-    return json(res, 500, { error: err.message });
+    return json(res, 500, { error: 'internal server error' });
   }
 });
 

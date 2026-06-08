@@ -96,12 +96,12 @@ export async function fireAction(action, logger, { force = false } = {}) {
     status,
     exitCode: result.exitCode,
     durationMs: result.durationMs,
-    stdoutTail: tail(result.stdout),
-    stderrTail: tail(result.stderr),
   };
+  // stderrTail included in logger context for diagnosis but not written to disk
+  const stderrTail = tail(result.stderr);
   appendRun(entry);
   const level = status === 'ok' || status === 'skipped' ? 'info' : 'error';
-  logger[level](entry, 'action finished');
+  logger[level](stderrTail ? { ...entry, stderrTail } : entry, 'action finished');
   return entry;
 }
 

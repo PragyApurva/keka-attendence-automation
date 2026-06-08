@@ -15,6 +15,7 @@ try {
   console.log(JSON.stringify({ access_token: tokens.accessToken, refresh_token: tokens.refreshToken }));
 } catch (err) {
   if (err.code === 'invalid_grant') {
+    const subdomain = process.env.KEKA_SUBDOMAIN || 'your-company.keka.com';
     console.error('');
     console.error('================================================================');
     console.error('  KEKA_REFRESH_TOKEN is expired or revoked (invalid_grant)');
@@ -22,7 +23,7 @@ try {
     console.error('');
     console.error('The refresh token chain is dead. You must re-authenticate once:');
     console.error('');
-    console.error('  1. Open https://thinkhat.keka.com in your browser and log in');
+    console.error(`  1. Open https://${subdomain} in your browser and log in`);
     console.error('  2. Open DevTools → Network tab → filter for "connect/token"');
     console.error('  3. Find the POST request → Response tab');
     console.error('  4. Copy the "refresh_token" value');

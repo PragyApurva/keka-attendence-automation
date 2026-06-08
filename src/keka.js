@@ -1,6 +1,6 @@
 import https from 'node:https';
 
-const _subdomain = (process.env.KEKA_SUBDOMAIN || 'thinkhat.keka.com').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const _subdomain = (process.env.KEKA_SUBDOMAIN || 'app.keka.com').replace(/^https?:\/\//, '').replace(/\/$/, '');
 const KEKA_BASE = `https://${_subdomain}`;
 const ACTION_TIMEOUT_MS = 30_000;
 
@@ -59,8 +59,8 @@ async function clockAction(action) {
     },
   );
 
-  if (status < 200 || status >= 300) throw new Error(`Clock ${action} failed (${status}): ${body}`);
-  return { punched: true, response: body };
+  if (status < 200 || status >= 300) throw new Error(`Clock ${action} failed: HTTP ${status}`);
+  return { punched: true };
 }
 
 export async function runAction(action, { logger } = {}) {
@@ -122,7 +122,7 @@ export async function refreshAccessToken(refreshToken) {
   if (status < 200 || status >= 300) {
     let parsed = {};
     try { parsed = JSON.parse(respBody); } catch {}
-    const err = new Error(`Token refresh failed (${status}): ${respBody}`);
+    const err = new Error(`Token refresh failed: HTTP ${status}`);
     err.code = parsed.error ?? 'refresh_failed';
     throw err;
   }
