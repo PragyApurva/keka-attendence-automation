@@ -8,7 +8,7 @@ Standalone Node.js service that auto punch-in / punch-outs of Keka attendance.
 
 Self-contained — drives a headless Chromium via Playwright. No Python dependency.
 
-## Setup
+## Setup 
 
 ```bash
 npm install
