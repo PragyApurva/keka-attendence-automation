@@ -58,9 +58,20 @@ export async function fireAction(action, logger, { force = false } = {}) {
   const clockStatus = force ? null : await getClockStatus(parts.date);
 
   if (!force && !shouldFire(action, parts, clockStatus)) {
-    const entry = { action, status: 'skipped', reason: 'conditions-not-met', time: parts, clockStatus };
+    let reason, msg;
+    if (action === 'login' && clockStatus === 'in') {
+      reason = 'already_clocked_in';
+      msg = 'skipped: already clocked in today';
+    } else if (action === 'logout' && clockStatus !== 'in') {
+      reason = 'already_clocked_out';
+      msg = `skipped: cannot clock out — current status is ${clockStatus ?? 'not clocked in'}`;
+    } else {
+      reason = 'outside_window';
+      msg = 'skipped: current IST time is outside punch window';
+    }
+    const entry = { action, status: 'skipped', reason, time: parts, clockStatus };
     appendRun(entry);
-    logger.info(entry, 'skipped: time threshold or clock state not met');
+    logger.info(entry, msg);
     return entry;
   }
 
