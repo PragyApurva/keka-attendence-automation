@@ -46,6 +46,8 @@ jobs:
           KEKA_ACCESS_TOKEN: ${{ steps.refresh.outputs.access_token }}
           KEKA_SUBDOMAIN: ${{ secrets.KEKA_SUBDOMAIN }}
           FORCE: ${{ inputs.force == true && '1' || '0' }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
 
       - name: Rotate refresh token secret
         if: always() && steps.refresh.outcome == 'success'

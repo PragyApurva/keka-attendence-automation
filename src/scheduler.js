@@ -1,7 +1,8 @@
 import cron from 'node-cron';
 import { runAction, tail } from './keka.js';
 import { holidayName } from './holidays.js';
-import { appendRun, recentRuns } from './state.js';
+import { appendRun } from './state.js';
+import { getClockStatus, setClockStatus } from './redis-state.js';
 
 const TZ = process.env.TZ_NAME || 'Asia/Kolkata';
 
@@ -27,28 +28,24 @@ export function getIstDateParts(now = new Date()) {
   };
 }
 
-export function isInPunchWindow(action, parts) {
+// Login: 9:30–10:59 IST, only if not already clocked in
+// Logout: 20:30+ IST, only if currently clocked in (Redis status === 'in')
+export function shouldFire(action, parts, clockStatus) {
   if (action === 'login') {
-    return parts.hour === 9 && parts.minute >= 25 && parts.minute <= 35;
+    const afterOpen = parts.hour > 9 || (parts.hour === 9 && parts.minute >= 30);
+    const beforeCutoff = parts.hour < 11;
+    return afterOpen && beforeCutoff && clockStatus !== 'in';
   }
-
   if (action === 'logout') {
-    return parts.hour === 20 && parts.minute >= 25 && parts.minute <= 35;
+    const afterClose = parts.hour > 20 || (parts.hour === 20 && parts.minute >= 30);
+    return afterClose && clockStatus === 'in';
   }
-
   return false;
-}
-
-function hasSuccessfulRunToday(action, date) {
-  return recentRuns(200).some(
-    (run) => run.action === action && run.status === 'ok' && run.ts?.startsWith(date),
-  );
 }
 
 export async function fireAction(action, logger, { force = false } = {}) {
   const holiday = holidayName();
   const parts = getIstDateParts();
-  const alreadyPunched = hasSuccessfulRunToday(action, parts.date);
 
   if (holiday && !force) {
     const entry = { action, status: 'skipped', reason: `holiday:${holiday}` };
@@ -57,27 +54,30 @@ export async function fireAction(action, logger, { force = false } = {}) {
     return entry;
   }
 
-  if (!force && !isInPunchWindow(action, parts)) {
-    const entry = { action, status: 'skipped', reason: 'out-of-window', time: parts };
+  const clockStatus = force ? null : await getClockStatus(parts.date);
+
+  if (!force && !shouldFire(action, parts, clockStatus)) {
+    const entry = { action, status: 'skipped', reason: 'conditions-not-met', time: parts, clockStatus };
     appendRun(entry);
-    logger.info(entry, 'skipped because current IST time is outside punch window');
+    logger.info(entry, 'skipped: time threshold or clock state not met');
     return entry;
   }
 
-  if (!force && alreadyPunched) {
-    const entry = { action, status: 'skipped', reason: 'already_punched', date: parts.date };
-    appendRun(entry);
-    logger.info(entry, 'skipped because action already succeeded today');
-    return entry;
-  }
-
-  logger.info({ action, time: parts }, 'firing keka action');
+  logger.info({ action, time: parts, clockStatus }, 'firing keka action');
   const result = await runAction(action, { logger });
   const status = result.timedOut
     ? 'timeout'
     : result.exitCode === 0
       ? 'ok'
       : 'failed';
+
+  if (status === 'ok') {
+    const newStatus = action === 'login' ? 'in' : 'out';
+    await setClockStatus(parts.date, newStatus).catch((err) =>
+      logger.error({ err }, 'failed to update redis clock status'),
+    );
+    logger.info({ clockStatus: newStatus }, 'redis clock status updated');
+  }
 
   const entry = {
     action,
@@ -96,13 +96,13 @@ export async function fireAction(action, logger, { force = false } = {}) {
 export function startScheduler(logger) {
   const loginJob = cron.schedule(
     LOGIN_CRON,
-    () => fire('login', logger).catch((err) => logger.error({ err }, 'login job error')),
+    () => fireAction('login', logger).catch((err) => logger.error({ err }, 'login job error')),
     { timezone: TZ },
   );
 
   const logoutJob = cron.schedule(
     LOGOUT_CRON,
-    () => fire('logout', logger).catch((err) => logger.error({ err }, 'logout job error')),
+    () => fireAction('logout', logger).catch((err) => logger.error({ err }, 'logout job error')),
     { timezone: TZ },
   );
 
